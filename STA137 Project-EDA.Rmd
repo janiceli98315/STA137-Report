@@ -1,0 +1,212 @@
+---
+title: "STA137 Project"
+output: html_document
+date: "2023-12-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Abstract
+This report illustrates the time series analysis to forecast prices for both conventional and organic avocados, utilizing a dataset provided by Itay Gabbay, including historical records spanning from 2015 to 2018. The methodology involves classic decomposition of the time series, trend and seasonality analysis, thorough residual checking, AutoRegressive Moving Average (ARMA) model fitting, and parameter estimation for prediction price accuracy. The results indicates XXXXX. Through this comprehensive investigation, we aim to enhance the price prediction accuracy, aiding farmers, distributors, and consumers in strategic decision-making.
+
+
+## Introduction
+### Motivation
+The increasing awareness of the significance of a healthy diet has led to a dramatic increase in the popularity of avocados, solidifying their status as a dietary staple. This surge in demand, however, has brought about an escalation in avocado prices. Besides, the unique growth requirements of avocados, plus their susceptibility to environmental conditions, contribute to the volatility in prices, presenting a substantial challenge for both producers and consumers. Therefore it is necessary to have a comprehensive understanding of the factors influencing their market dynamics.
+
+
+### Problem Definition
+As we delve into the time series analysis, there are several questions that we are interested in:
+- Trend Identification: What are the trends in avocado prices over the observed period? Are there any patterns or cycles?
+- Seasonal Variations: How do avocado prices fluctuate seasonally? Are there specific times of the year when prices tend to be higher or lower?
+- Cyclical Patterns: Are there any cyclical patterns in avocado prices that repeat over a certain time frame?
+- Forecasting: Can we build a reliable model to forecast future avocado prices based on historical data?
+
+
+## Data Processing
+
+```{r}
+library(lubridate)
+library(dplyr)
+library(tidyr)
+library(xts)
+library(ggplot2)
+library(ggpmisc)
+library(ggthemes)
+library(zoo)
+library(tseries)
+library(tidyverse)
+library(skimr)
+library(GGally)
+library(viridis)
+library(tibbletime)
+library(gridExtra)
+
+setwd("/Users/janiceli/Desktop")
+avocado = read.csv("avocado.csv")
+
+# Change the category variable into factor
+avocado$type = as.factor(avocado$type)
+avocado$region = as.factor(avocado$region)
+avocado$year = as.factor(avocado$year)
+# Convert 'Date' to a Date object
+avocado$Date <- as.Date(avocado$Date)
+
+# Data statistics
+str(avocado)
+summary(avocado)
+
+# Check the NA value
+any(is.na(avocado))
+# There is no NA values.
+
+avocado_con = avocado[avocado$type == "conventional",]
+avocado_org = avocado[avocado$type == "organic",]
+
+# Resampling the data into weekly frequency
+avocado1 <- avocado %>%
+  group_by(Date = format(Date, "%Y-%m-%d")) %>%
+  summarise(AveragePrice = mean(AveragePrice))
+
+# Resampling the data into weekly frequency
+avocado_con_weekly <- avocado_con %>%
+  group_by(Date = format(Date, "%Y-%m")) %>%
+  summarise(AveragePrice = mean(AveragePrice))
+
+# Resampling the data into weekly frequency
+avocado_org_weekly <- avocado_org %>%
+  group_by(Date = format(Date, "%Y-%m")) %>%
+  summarise(AveragePrice = mean(AveragePrice))
+
+org <- avocado %>% dplyr::select(Date, AveragePrice, type, Total.Volume, year) %>% filter(type == "organic")
+con <- avocado %>% dplyr::select(Date, AveragePrice, type, Total.Volume, year) %>% filter(type == "conventional")
+
+```
+
+## Data Description
+The dataset avocado contains 18249 observations with 14 variables. Since our goal is to analyze and predict the price between conventional and organic avocado, we will only keep the necessary variables as followed:
+- Date: the data of the observation, Recorded as YYYY-MM-DD through 2015-01-04 to 2018-03-25.
+- AveragePrice: the average price of a single avocado
+- type: conventional or organic
+- year: the observation year
+
+Since the dataset has no NA values or significant outliers, then no further data cleaning or maunipulation is needed.
+
+
+## EDA
+First we separate the dataset into two categories by their types and then check their distribution and quanties.
+
+```{r}
+# Histogram for Average Price
+#hist(avocado$AveragePrice)
+#hist(avocado_monthly$AveragePrice)
+#hist(avocado_weekly$AveragePrice)
+
+summary(avocado)
+summary(avocado_con)
+summary(avocado_org)
+
+
+# Outlier checking
+boxplot(avocado$AveragePrice)
+
+
+# Set up the layout for the plots in one line
+par(mfrow = c(3,3))
+# Plot 1: Conventional Avocado Prices Each Year
+p1 <- ggplot(avocado_con, aes(x = year, y = AveragePrice)) + 
+  stat_boxplot(geom = "errorbar", width = 0.25) +
+  geom_boxplot(fill = "dodgerblue1", colour = "black", alpha = 0.5, outlier.colour = "tomato2") 
+ 
+
+# Plot 2: Organic Avocado Prices Each Year
+p2 <- ggplot(avocado_org, aes(x = year, y = AveragePrice)) + 
+  stat_boxplot(geom = "errorbar", width = 0.25) +
+  geom_boxplot(fill = "dodgerblue1", colour = "black", alpha = 0.5, outlier.colour = "tomato2") 
+ 
+
+# Plot 3: Two Types of Avocado Prices (Total)
+p3 <- ggplot(avocado, aes(x = type, y = AveragePrice)) + 
+  stat_boxplot(geom = "errorbar", width = 0.25) +
+  geom_boxplot(fill = "dodgerblue1", colour = "black", alpha = 0.5, outlier.colour = "tomato2") 
+
+
+# Check the distribution of two avocado prices
+#p4 = ggplot(avocado, aes(x = AveragePrice, fill = type)) +
+  #geom_density(alpha = 0.5)
+
+
+avocado1 <- avocado[avocado$Date > as.Date("2015-01-04"), ] %>%
+  filter(type == "conventional" | type == "organic")
+
+
+p5=ggplot(avocado_con, aes(x = Date, y = AveragePrice, color = type)) +
+  geom_line() +
+  theme(legend.position = "none")
+
+p6=ggplot(avocado_org, aes(x = Date, y = AveragePrice, color = type)) +
+  geom_line(color = "#00AFBB") +
+  theme(legend.position = "none")
+
+p7=ggplot(avocado1, aes(x = Date, y = AveragePrice, color = type)) +
+  geom_line() +
+  theme(legend.position = "none")
+
+
+# Arrange the plots in one line using grid.arrange
+grid.arrange( p1, p2, p3, p5, p6, p7,  ncol = 3)
+
+
+
+```
+
+
+```{r}
+# # Let's see if there are seasonal patterns with conventional avocadoes
+ggplot(con, aes(x = AveragePrice, fill = as.factor(year))) + 
+  geom_density(alpha = .5) + 
+  theme_economist() +
+  facet_wrap(~ year) + theme(plot.title=element_text(hjust=0.5), plot.background=element_rect(fill="white")) + 
+  guides(fill = FALSE) + labs(title="Distribution of Prices by year", x = 'Average Price', y = 'Density') + 
+  scale_fill_manual(values=c("#2E64FE", "#40FF00", "#FE642E", "#FE2E2E"))
+
+# # Let's see if there are seasonal patterns with organice avocadoes
+ggplot(org, aes(x = AveragePrice, fill = as.factor(year))) + 
+  geom_density(alpha = .5) + 
+  theme_economist() +
+  facet_wrap(~ year) + theme(plot.title=element_text(hjust=0.5), plot.background=element_rect(fill="white")) + 
+  guides(fill = FALSE) + labs(title="Distribution of Prices by year", x = 'Average Price', y = 'Density') + 
+  scale_fill_manual(values=c("#2E64FE", "#40FF00", "#FE642E", "#FE2E2E"))
+```
+
+
+
+```{r}
+# Time series plot by weekly average avocado price
+avocado_con_ts_weekly <- ts(avocado_con_weekly$AveragePrice, start = 2015, frequency = 12)
+ts.plot(avocado_con_ts_weekly, xlab = "Time", ylab = "Average Price", main = "weekly Average Price")
+
+# Time series plot by weekly average avocado price
+avocado_org_ts_weekly <- ts(avocado_con_weekly$AveragePrice, start = 2015, frequency = 12)
+ts.plot(avocado_con_ts_weekly, xlab = "Time", ylab = "Average Price", main = "weekly Average Price")
+
+
+# Create time series objects
+avocado_con_ts_weekly <- ts(avocado_con_weekly$AveragePrice, start = 2015, frequency = 12)
+avocado_org_ts_weekly <- ts(avocado_org_weekly$AveragePrice, start = 2015, frequency = 12)
+
+# Plot the first time series
+ts.plot(avocado_con_ts_weekly, xlab = "Time", ylab = "Average Price", main = "Weekly Average Price")
+# Add the second time series to the plot
+lines(avocado_org_ts_weekly, col = "red")
+# Add a legend
+legend("topright", legend = c("Conventional", "Organic"), col = c("black", "red"), lty = 1)
+
+
+
+```
+
+
+
